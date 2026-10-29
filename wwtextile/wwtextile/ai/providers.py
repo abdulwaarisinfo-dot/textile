@@ -123,7 +123,7 @@ def transcribe(cfg: Config, audio: bytes, filename: str, mime: str) -> str:
         raise ProviderError("No speech-to-text provider is configured on the server.")
     base = (cfg.stt_base_url or "https://api.openai.com/v1").rstrip("/")
     boundary = uuid.uuid4().hex
-    def part(name, value):
+    def part(name, value): 
         return (f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n').encode()
     body = part("model", cfg.stt_model) + part("response_format", "json") + (
         f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: {mime}\r\n\r\n').encode() + audio + f"\r\n--{boundary}--\r\n".encode()
