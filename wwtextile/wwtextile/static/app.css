@@ -203,3 +203,34 @@ tr.total-row { font-weight: 600; background: var(--muted); }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 18px; margin-bottom: 18px; }
 .charts .card { margin-bottom: 0; }
 .charts details { margin-top: 6px; } .charts summary { cursor: pointer; color: var(--text-2); }
+
+/* ---- guidance: dashboard "needs you" panel, flow strip, floating guide ---- */
+.now h2 { font-size: 18px; margin: 0; }
+.flow { list-style: none; display: flex; gap: 0; margin: 14px 0; padding: 0; overflow-x: auto; }
+.flow li { flex: 1 1 0; min-width: 96px; }
+.flow a { display: block; text-decoration: none; border: 1px solid var(--border); border-left-width: 0; padding: 8px 10px; background: var(--muted); }
+.flow li:first-child a { border-left-width: 1px; border-radius: 8px 0 0 8px; } .flow li:last-child a { border-radius: 0 8px 8px 0; }
+.flow a.has { background: var(--bg); border-color: var(--border-strong); }
+.flow a:hover { background: var(--surface); }
+.flow .n { display: block; font-size: 20px; font-weight: 600; line-height: 1.1; } .flow a:not(.has) .n { color: var(--text-2); font-weight: 400; }
+.flow .l { display: block; font-weight: 600; font-size: 12px; } .flow .h { display: block; font-size: 11px; color: var(--text-2); }
+.todo { list-style: none; margin: 0 0 8px; padding: 0; }
+.todo li { display: flex; gap: 14px; justify-content: space-between; align-items: center; padding: 10px 0 10px 12px; border-top: 1px solid var(--border); border-left: 3px solid var(--border); }
+.todo li.sev-high { border-left-color: var(--err); } .todo li.sev-medium { border-left-color: var(--warn); }
+.guide { position: fixed; right: 18px; bottom: 18px; z-index: 30; }
+.guide-fab { font: inherit; font-weight: 600; background: var(--primary); color: var(--on-primary); border: 0; border-radius: 99px; padding: 10px 18px; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.guide-badge { margin-left: 8px; background: var(--bg); color: var(--text); border-radius: 99px; padding: 0 7px; font-size: 12px; }
+.guide-panel { position: absolute; right: 0; bottom: 48px; width: min(380px, calc(100vw - 36px)); max-height: min(560px, 75vh); display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.2); }
+.guide-panel[hidden] { display: none; }
+.guide-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.guide-x { font: inherit; font-size: 20px; line-height: 1; background: none; border: 0; cursor: pointer; }
+.guide-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.guide-tabs button { flex: 1; font: inherit; background: none; border: 0; padding: 8px; cursor: pointer; color: var(--text-2); border-bottom: 2px solid transparent; }
+.guide-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+.guide-body { padding: 12px 14px; overflow-y: auto; font-size: 13px; }
+.guide-body ol { padding-left: 18px; margin: 6px 0; } .guide-body h3 { font-size: 14px; margin: 0 0 4px; }
+.g-item { padding: 8px 0 8px 10px; border-left: 3px solid var(--border); margin-bottom: 8px; } .g-item.high { border-left-color: var(--err); } .g-item.medium { border-left-color: var(--warn); }
+.g-ask { display: flex; gap: 6px; margin-top: 8px; } .g-ask input { flex: 1; }
+.g-ans { white-space: pre-wrap; margin: 8px 0; padding: 8px; background: var(--muted); border-radius: 8px; }
+@media (max-width: 720px) { .todo li { flex-direction: column; align-items: flex-start; } }
+@media print { .guide { display: none; } }
