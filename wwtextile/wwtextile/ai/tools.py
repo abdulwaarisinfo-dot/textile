@@ -680,7 +680,7 @@ def execute(conn, user, ctx: Ctx, name: str, raw_args: Any) -> ToolResult:
         audit.record_standalone(conn, user, "assistant.tool_denied", entity_ref=name, outcome="denied", detail={"channel": ctx.channel})
         return ToolResult(ok=False, facts=[f"Your role does not have permission for that ({tool.perm})."], unsupported="permission")
     try:
-        args = validate_args(tool, raw_args)
+        args = validate_args(tool, raw_args) 
         return tool.fn(conn, user, args, ctx)
     except ValidationFailed as e:
         return ToolResult(ok=False, facts=["Invalid request: " + "; ".join(e.errors.values())])
