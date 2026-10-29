@@ -402,3 +402,166 @@ def test_assistant_answers_natural_stock_questions_on_showcase_data(showcase):
         text = json.dumps(r)
         assert "couldn't map" not in text, q
         assert "lot/location balance" in text, q          # a real tool result, not the rule engine's fallback
+
+
+# ------------------------------------------------------------------ assistant: analytics tools on showcase data
+def _ask(cfg, conn, user, q):
+    from wwtextile.ai import agent
+    u = conn.execute("SELECT * FROM users WHERE username=?", (user,)).fetchone()
+    return agent.handle(conn, cfg, u, q)
+
+
+def test_analytics_answers_match_the_records(showcase):
+    cfg, conn, _ = showcase
+    # loss analysis: percentages come straight from posted results
+    r = _ask(cfg, conn, "ceo", "compare dyeing and printing losses")
+    assert r["tools"] == ["loss_analysis"] and r["cards"]
+    row = conn.execute("SELECT SUM(accepted) a, SUM(rejected) r, SUM(wastage) w, SUM(shrinkage) s, SUM(variance) v, SUM(remaining) m FROM processing_results r "
+                       "JOIN processing_jobs j ON j.id=r.job_id WHERE r.status='posted' AND j.process_type='dyeing'").fetchone()
+    inp = sum(row)
+    assert f"{row['s'] * 100 / inp:.1f}%" in r["text"]
+    # receivable ranking equals the finance summary
+    from wwtextile.services import finance
+    s = finance.summary(conn)
+    top = max((p for p in s["per_party"] if p["direction"] == "receivable"), key=lambda p: p["balance"])
+    r = _ask(cfg, conn, "ceo", "who owes us money")
+    assert r["tools"] == ["party_balances"] and top["party"]["name"] in r["text"]
+    # payable question goes to the payable side
+    assert "we owe" in _ask(cfg, conn, "fin1", "how much do we owe suppliers")["text"]
+    # the other analytics questions each use their own tool
+    for q, tool in (("status of multihead orders", "multihead_status"), ("who are our top customers", "top_customers"), ("which supplier did we buy the most from", "purchases_by_supplier"),
+                    ("what is the oldest lot in the raw store", "stock_ageing"), ("cash position this week", "cash_position"), ("which jobs are with Neelam", "jobs_by_party")):
+        assert _ask(cfg, conn, "ceo", q)["tools"] == [tool], q
+    # exceptions are listed without the 'this week only' trap
+    assert "No discrepancies" not in _ask(cfg, conn, "ceo", "show reconciliation exceptions")["text"]
+    # "show me receipts this week" is a request, not an ordinal pick from an earlier list
+    r = _ask(cfg, conn, "ceo", "show me receipts this week")
+    assert "last list" not in r["text"]
+
+
+def test_analytics_respect_roles(showcase):
+    cfg, conn, _ = showcase
+    from wwtextile.errors import PermissionDenied
+    for user, q in (("store1", "who owes us money"), ("store1", "cash position this week"), ("prod1", "who are our top customers"), ("gate1", "how much wastage did we have")):
+        try:
+            r = _ask(cfg, conn, user, q)
+        except PermissionDenied:
+            continue                                  # a role without assistant access at all (gate) is refused up front
+        assert r["status"] in ("denied", "unavailable") or "permission" in r["text"].lower() or "does not" in r["text"].lower(), (user, q, r["text"])
+    # a role with stock rights but no finance rights sees quantities but never money
+    r = _ask(cfg, conn, "store1", "which supplier did we buy the most from")
+    assert r["tools"] == ["purchases_by_supplier"] and "billed" not in r["text"]
+
+
+def test_llm_loop_can_use_the_new_tools_and_is_capped(showcase, tmp_path):
+    from tests.test_ai import Fake, J, anthropic_script
+    cfg0, conn, _ = showcase
+    def script(path, headers, body, n):
+        last = json.loads(body)["messages"][-1]["content"]
+        if isinstance(last, list) and last and last[0].get("type") == "tool_result":
+            return (200, *J({"content": [{"type": "text", "text": "Dyeing shows the results below."}]}))
+        return (200, *J({"content": [{"type": "tool_use", "id": f"tu_{n}", "name": "loss_analysis", "input": {"process": "dyeing"}}]}))
+    fake = Fake(script)
+    try:
+        cfg = dataclasses.replace(cfg0, ai_provider="anthropic", ai_api_key="k", ai_model="m", ai_base_url=fake.url, ai_max_per_hour=2)
+        import os
+        for k in ("no_proxy", "NO_PROXY"):
+            os.environ[k] = "127.0.0.1,localhost"
+        from wwtextile.ai import agent
+        agent._LLM_CALLS.clear()
+        ceo = conn.execute("SELECT * FROM users WHERE username='ceo'").fetchone()
+        r1 = agent.handle(conn, cfg, ceo, "how bad is dyeing wastage?")
+        assert r1["engine"] == "llm" and r1["tools"] == ["loss_analysis"] and r1["cards"]       # model chose the tool; the numbers are ours
+        agent.handle(conn, cfg, ceo, "and printing?")
+        r3 = agent.handle(conn, cfg, ceo, "and embroidery?")                                   # third call in the hour: over the cap
+        assert r3["engine"] == "rules" and "Hourly limit" in (r3["notice"] or "")
+        assert len(fake.calls) == 4                                                            # 2 model calls x (tool request + final answer): the third never reached the provider
+    finally:
+        fake.close()
+
+
+def test_every_suggested_question_is_answered_for_every_role(showcase):
+    """The 'Try' buttons on the assistant page must all work for the role that sees them, on the showcase data."""
+    import html
+    cfg, _, _ = showcase
+    app = create_app(cfg)
+    total = 0
+    for user in ("ceo", "manager1", "store1", "prod1", "fin1", "admin"):
+        cl = Cl(app)
+        assert cl.login(user, ADMIN_PW if user == "admin" else PW).status_code == 303
+        page = cl.c.get("/assistant")
+        if page.status_code != 200:
+            continue
+        for ex in [html.unescape(x) for x in re.findall(r'data-example="([^"]+)"', page.text)]:
+            r = cl.post("/api/assistant/message", {"text": ex})
+            assert r.status_code == 200, (user, ex, r.text[:200])
+            out = r.json()
+            assert "couldn't map" not in out["text"] and out["status"] in ("ok", "info", "clarify"), (user, ex, out["text"][:160])
+            total += 1
+    assert total >= 40
+
+
+# ------------------------------------------------------------------ guidance layer
+def test_guide_actions_match_records_and_roles(showcase):
+    from wwtextile.services import briefing
+    cfg, conn, _ = showcase
+    users = {r["username"]: r for r in conn.execute("SELECT * FROM users")}
+    ceo = briefing.actions(conn, users["ceo"], "PKR")
+    assert ceo and all(a["url"].startswith("/") and a["why"] and a["title"] for a in ceo)
+    sevs = [a["sev"] for a in ceo]
+    assert sevs == sorted(sevs, key=lambda x: {"high": 0, "medium": 1, "low": 2}[x])
+    drafts = conn.execute("SELECT COUNT(*) FROM dispatches WHERE status='draft'").fetchone()[0]
+    titles = " ".join(a["title"] for a in ceo)
+    assert (f"{drafts} dispatch" in titles) == bool(drafts)
+    # a gate user must not be shown finance or processing items
+    gate = " ".join(a["title"] + a["url"] for a in briefing.actions(conn, users["gate1"], "PKR"))
+    assert "/finance" not in gate and "/processing" not in gate
+    # an action the user cannot perform is labelled as waiting on someone else
+    s1 = [a for a in briefing.actions(conn, users["store1"], "PKR") if a["url"].startswith("/dispatch?status=draft")]
+    assert all(a["cta"] == "View" and a["waiting_on"] for a in s1)
+
+
+def test_guide_endpoint_and_dashboard_render(showcase):
+    cfg, conn, _ = showcase
+    cl = Cl(create_app(cfg)); assert cl.login("manager1").status_code == 303
+    home = cl.c.get("/")
+    assert "need" in home.text and 'id="guide"' in home.text and "not by an AI model" in home.text
+    j = cl.c.get("/api/guide", params={"path": "/processing/jobs/new"}).json()
+    assert j["help"]["title"] == "New processing job" and j["actions"] and j["greeting"].startswith("Good ")
+    assert cl.c.get("/api/guide", params={"path": "//evil.com"}).json()["help"]["title"] == "Dashboard"
+    for path in ("/fabrics", "/dispatch", "/gate", "/finance", "/multihead", "/accessories", "/watchtower", "/reports", "/assistant", "/ledger"):
+        assert cl.c.get("/api/guide", params={"path": path}).json()["help"], path
+    assert Cl(create_app(cfg)).c.get("/api/guide", follow_redirects=False).status_code in (302, 303, 401)
+    assert "style=" not in home.text.replace("style=\"\"", "")
+
+
+# ------------------------------------------------------------------ Urdu / Roman Urdu
+@pytest.mark.parametrize("q,expect", [
+    ("kitna stock hai", "available in total"),
+    ("kitna nuqsan hua", "lost"),
+    ("kis se paise lene hain", "owe us"),
+    ("hum ne kis ko paise dene hain", "we owe"),
+    ("kaunsi job late hai", "overdue"),
+    ("multihead machines ka haal dikhao", "Multihead order"),
+    ("purana stock dikhao", "Oldest stock"),
+    ("آج کیا ہو رہا ہے", "Receipts posted"),
+    ("نقصان کتنا ہوا", "lost"),
+    ("کس سے پیسے لینے ہیں", "owe us"),
+])
+def test_urdu_and_roman_urdu_questions_reach_the_right_tool(showcase, q, expect):
+    cfg, conn, _ = showcase
+    out = _ask(cfg, conn, 'ceo', q)
+    assert expect in out["text"], out["text"]
+    assert out["engine"] == "rules" and out["notice"]          # says plainly the detail is still English
+
+
+def test_urdu_unknown_question_is_not_guessed_and_numbers_match(showcase):
+    cfg, conn, _ = showcase
+    out = _ask(cfg, conn, 'ceo', "mujhe ek nayi gulabi ki qeemat batao")
+    assert "couldn't map" in out["text"] and "Roman Urdu" in out["text"]
+    en = _ask(cfg, conn, 'ceo', "how much stock is on hand")["text"]
+    ur = _ask(cfg, conn, 'ceo', "kitna stock hai")["text"]
+    assert re.findall(r"[\d,]+\.\d+ m", en) == re.findall(r"[\d,]+\.\d+ m", ur)
+    from wwtextile.ai import urdu
+    assert urdu.detect("show overdue jobs") is None and urdu.detect("JOB-00002 kyun late hai") == "roman"
+    assert "JOB-00002" in urdu.normalize("JOB-00002 kyun late hai").upper()
