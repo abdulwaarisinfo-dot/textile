@@ -532,7 +532,7 @@ def handle(conn, cfg, user, text: str, *, channel: str = "text", conversation_id
         lead = urdu.LEAD[lang].get(used[0])
         if lead:
             out["text"] = lead + " " + out["text"]
-        notice = notice or urdu.NOTICE[lang]
+        notice = notice or urdu.NOTICE[lang] 
     elif lang and engine == "rules" and (direct is not None) and not results:
         out["text"] = out["text"] + ("\n\n" + ("Main abhi in sawalon ke Urdu/Roman Urdu alfaaz samajhta hoon: stock, nuqsan, late jobs, kis se paise lene hain / kisko dene hain, cash, Multihead, gaariyan, dispatch, alerts. Baqi sawal English mein poochein, ya AI model connect karein." if lang == "roman" else "میں ابھی یہ سوال اردو میں سمجھتا ہوں: اسٹاک، نقصان، لیٹ جابز، وصولی/ادائیگی، کیش، ملٹی ہیڈ، گاڑیاں، ڈسپیچ، الرٹ۔ باقی سوال انگریزی میں پوچھیں یا AI ماڈل جوڑیں۔"))
     out.update(engine=engine, notice=notice, tools=used, conversation_id=conv["id"], assistant=cfg.assistant_name, channel=channel)
