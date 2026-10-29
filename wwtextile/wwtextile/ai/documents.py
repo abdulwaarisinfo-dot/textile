@@ -227,7 +227,7 @@ def create_receipt_draft(conn, user, doc_id: int, form: dict) -> int:
         raise ValidationFailed("A receipt draft was already created from this document.")
     if row["status"] == "rejected":
         raise ValidationFailed("This document was rejected.")
-    rid = receipts.create_draft(conn, user, form)
+    rid = receipts.create_draft(conn, user, form) 
     with transaction(conn):
         conn.execute("UPDATE documents SET status='draft_created', receipt_id=? WHERE id=?", (rid, doc_id))
         audit.record(conn, user, "document.create_receipt_draft", "document", str(doc_id), detail={"receipt_id": rid})
