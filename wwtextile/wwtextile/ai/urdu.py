@@ -72,7 +72,7 @@ LEAD = {
                "jobs_by_party": "اس پارٹی کے جابز:", "purchases_by_supplier": "خریداری:", "top_customers": "بڑے کسٹمر:", "stock_ageing": "پرانا اسٹاک:",
                "factory_update": "آج کا حال:", "list_processing_jobs": "جابز:", "search_inventory": "اسٹاک کی پوزیشن:", "gate_records": "گیٹ کا ریکارڈ:", "list_dispatches": "ڈسپیچ:", "list_alerts": "الرٹس:", "accessory_stock": "ایکسیسریز:", "finance_summary": "فنانس:"},
 }
-NOTICE = {"roman": "Tafseel abhi English mein hai; figures wohi hain jo records mein hain.",
+NOTICE = {"roman": "Tafseel abhi English mein hai; figures wohi hain jo records mein hain.", 
           "script": "تفصیل ابھی انگریزی میں ہے؛ اعداد وہی ہیں جو ریکارڈ میں ہیں۔"}
 
 
