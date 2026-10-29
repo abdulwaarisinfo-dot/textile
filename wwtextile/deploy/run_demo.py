@@ -71,6 +71,11 @@ def main() -> int:
         "WW_COOKIE_SECURE": "0" if args.local else "1", "WW_MAX_UPLOAD_MB": "3",
         "WW_DB_PATH": str(ROOT / "data" / "demo" / "wwtextile.db"), "WW_UPLOAD_DIR": str(ROOT / "data" / "demo" / "uploads"),
     }
+    # Optional real AI / voice providers: read from .demo.env or the shell. Keys stay on the server and are never printed or sent to the browser.
+    for src in (vals, os.environ):
+        for k, v in src.items():
+            if k.startswith(("WW_AI_", "WW_STT_", "WW_TTS_")) and v:
+                env[k] = v
     for k, v in env.items():
         os.environ.setdefault(k, v) if k in ("WW_DB_PATH", "WW_UPLOAD_DIR", "WW_MAX_UPLOAD_MB") else os.environ.__setitem__(k, v)
     os.chdir(ROOT)
@@ -88,6 +93,11 @@ def main() -> int:
     print(f"  Admin login   : admin / {env['WW_DEMO_ADMIN_PASSWORD']}   (keep private - can reset the demo)")
     print(f"  Local address : http://{args.host}:{args.port}   health: /healthz")
     print("  Public link   : run a tunnel to that address in another terminal (DEMO.md)")
+    ai_on = bool(env.get("WW_AI_PROVIDER") and env.get("WW_AI_API_KEY") and env.get("WW_AI_MODEL"))
+    print("  AI model      : " + (f"CONNECTED ({env['WW_AI_PROVIDER']}, model {env['WW_AI_MODEL']}); max {env.get('WW_AI_MAX_PER_HOUR', '60')} AI answers per user per hour" if ai_on
+                                   else "not connected - the built-in rule engine answers (add WW_AI_* to .demo.env, see DEMO.md)"))
+    print("  Server voice  : " + ("speech-to-text connected" if env.get("WW_STT_API_KEY") else "no server speech-to-text (browser voice is used)")
+          + ("; text-to-speech connected" if env.get("WW_TTS_API_KEY") else "; no server text-to-speech"))
     print("=" * 70 + "\n", flush=True)
     return cli.main(["demo", "--host", args.host, "--port", str(args.port)])
 
