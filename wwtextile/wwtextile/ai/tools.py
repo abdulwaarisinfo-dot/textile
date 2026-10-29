@@ -261,7 +261,10 @@ def t_explain_job(conn, user, a, ctx):
 
 
 def t_reconciliation_results(conn, user, a, ctx):
-    lo, hi, label = day_bounds(ctx, a.get("period", "this_week"))
+    if a.get("period"):
+        lo, hi, label = day_bounds(ctx, a["period"])
+    else:
+        lo, hi, label = "0000", "9999", "so far"          # no period named: every posted result, not only this week's
     sql = ("SELECT pr.*, j.job_no, j.process_type, l.lot_no, pi.qty AS issued, i.unit FROM processing_results pr JOIN processing_jobs j ON j.id=pr.job_id "
            "JOIN processing_issues pi ON pi.id=pr.issue_id JOIN lots l ON l.id=j.lot_id JOIN items i ON i.id=l.item_id WHERE pr.status='posted' AND pr.posted_at >= ? AND pr.posted_at < ? ")
     if a.get("exceptions_only", True):
@@ -688,3 +691,8 @@ def execute(conn, user, ctx: Ctx, name: str, raw_args: Any) -> ToolResult:
         return ToolResult(ok=False, facts=[str(e)])
     except AppError as e:
         return ToolResult(ok=False, facts=[str(e)])
+
+
+# analytics tools live in their own module (imported last: they use the helpers defined above)
+from . import tools_analytics as _ta  # noqa: E402
+TOOLS.update({t.name: t for t in _ta.build()})
